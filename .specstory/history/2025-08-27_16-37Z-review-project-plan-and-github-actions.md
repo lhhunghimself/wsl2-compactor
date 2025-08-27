@@ -3716,3 +3716,56 @@ README now fully explains installation and usage of the headless CLI.
 
 ---
 
+_**User**_
+
+Add a formal license file and copyright it to Ling-Hong Hung
+
+---
+
+_**Assistant**_
+
+
+
+---
+
+<details><summary>Edit file: LICENSE</summary>
+
+undefined
+
+**Chunk 1**
+Lines added: 21, lines removed: 1
+
+```diff
+@@ -1,1 +1,21 @@
+- 
++ MIT License
++ 
++ Copyright (c) 2025 Ling-Hong Hung
++ 
++ Permission is hereby granted, free of charge, to any person obtaining a copy
++ of this software and associated documentation files (the "Software"), to deal
++ in the Software without restriction, including without limitation the rights
++  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++ copies of the Software, and to permit persons to whom the Software is
++ furnished to do so, subject to the following conditions:
++ 
++ The above copyright notice and this permission notice shall be included in all
++ copies or substantial portions of the Software.
++ 
++ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++ SOFTWARE.
+```
+
+</details>
+
+---
+
+
+
+---
+
