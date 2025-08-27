@@ -63,23 +63,24 @@ try {
         $dryRunArgs += "--vhd", $VhdPath
     }
     
-    $dryRunOutput = python @dryRunArgs 2>&1
+    $dryRunOutputLines = python @dryRunArgs 2>&1
+    $dryRunOutput = [string]::Join("`n", $dryRunOutputLines)
     $exitCode = $LASTEXITCODE
     
     Write-Host "Dry-run output:" -ForegroundColor Cyan
     Write-Host $dryRunOutput -ForegroundColor Gray
     
-    # Check for expected dry-run indicators
+    # Check for expected dry-run indicators (case-insensitive)
     $expectedPatterns = @(
         "DRY-RUN MODE",
         "Target distro: $Distro",
         "Target user: $User",
         "DiskPart compact simulation completed"
     )
-    
+
     $allPatternsFound = $true
     foreach ($pattern in $expectedPatterns) {
-        if ($dryRunOutput -notmatch [regex]::Escape($pattern)) {
+        if (-not ($dryRunOutput -imatch $pattern)) {
             Write-Host "❌ Missing expected pattern: '$pattern'" -ForegroundColor Red
             $allPatternsFound = $false
         }

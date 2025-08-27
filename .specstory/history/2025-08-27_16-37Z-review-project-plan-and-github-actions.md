@@ -3198,3 +3198,31 @@ If both pass, the workflow is fully green and the new headless test is integrate
 
 ---
 
+_**User**_
+
+Dry-run output:
+[2025-08-27 18:20:30] [DRY-RUN MODE] No actual changes will be made [2025-08-27 18:20:30] Target distro: Ubuntu [2025-08-27 18:20:30] Target user: ubuntu [2025-08-27 18:20:30] VHDX: C:\dummy\ext4.vhdx [2025-08-27 18:20:30] Warning: VHD file not found (dry-run, continuing): C:\dummy\ext4.vhdx [2025-08-27 18:20:30] Checking for active user processes� [2025-08-27 18:20:30] No active processes detected for user; proceeding to shutdown. [2025-08-27 18:20:30] [DRY-RUN] Would kill all processes for user ubuntu in distro Ubuntu [2025-08-27 18:20:30] Logout verification: OK [2025-08-27 18:20:30] Stopping WSL� [2025-08-27 18:20:30] [DRY-RUN] Would terminate WSL distro Ubuntu and shutdown WSL [2025-08-27 18:20:30] Compacting VHD (DiskPart)� [2025-08-27 18:20:30] [DRY-RUN] Would run DiskPart compact on C:\dummy\ext4.vhdx [2025-08-27 18:20:30] [DRY-RUN] DiskPart script would be: select vdisk file="C:\dummy\ext4.vhdx" attach vdisk readonly compact vdisk detach vdisk exit  [2025-08-27 18:20:30] [DRY-RUN] DiskPart compact simulation completed [2025-08-27 18:20:30] Relaunching distro� [2025-08-27 18:20:30] [DRY-RUN] Would relaunch WSL distro Ubuntu for user ubuntu [2025-08-27 18:20:30] Relaunch requested. [2025-08-27 18:20:30] SUCCESS: Compaction completed successfully.
+❌ Missing expected pattern: 'DRY-RUN MODE'
+❌ Missing expected pattern: 'Target distro: Ubuntu'
+❌ Missing expected pattern: 'Target user: ubuntu'
+❌ Missing expected pattern: 'DiskPart compact simulation completed'
+❌ Dry-run compaction: FAIL (exit code: 0)
+Error: Process completed with exit code 1.
+
+
+---
+
+_**Assistant**_
+
+
+
+---
+
+
+
+---
+
+
+
+---
+
