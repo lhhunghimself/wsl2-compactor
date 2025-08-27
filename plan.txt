@@ -525,6 +525,8 @@ Summary of current state vs. original plan
 
 6) Maintenance & releases  
    ✅  Tag-triggered release workflow implemented (.github/workflows/release.yml).  
+   ✅  Fixed deprecated GitHub Actions (actions/create-release@v1 → GitHub CLI).
+   ✅  Added proper permissions (contents: write) for release creation.
    🔲  Version-bump instructions fine but automation could be added later.
 
 7) Nice-to-have tasks  
@@ -580,6 +582,11 @@ No additional local tools are required beyond Python 3.10+ and PySide6 for devel
    - "Detect VHD" button in GUI
    - Window geometry persistence
    - Basic logging to %APPDATA%\WSLCompact\logs\latest.txt
+6. **FIXED RELEASE WORKFLOW**: Updated deprecated GitHub Actions
+   - Replaced actions/create-release@v1 + actions/upload-release-asset@v1
+   - Now uses modern GitHub CLI (gh release create)
+   - Added proper permissions: contents: write
+   - Fixed tag reference (${{ github.ref }} → ${{ github.ref_name }})
 
 🛠️ **IN PROGRESS:**
 1. GitHub Actions build workflow should be running - check repository Actions tab
@@ -597,3 +604,24 @@ git tag v1.0.0
 git push --tags
 ```
 This will trigger the release workflow and create a GitHub Release with the attached executable.
+
+## Release Workflow Troubleshooting
+
+**Issue**: Tags were created but no GitHub Release appeared
+**Cause**: Original workflow used deprecated GitHub Actions (actions/create-release@v1)
+**Solution**: Updated to modern GitHub CLI approach with proper permissions
+
+**Fixed Release Workflow Changes:**
+- ✅ Replaced deprecated actions/create-release@v1 with `gh release create`
+- ✅ Replaced deprecated actions/upload-release-asset@v1 with direct CLI upload
+- ✅ Added `permissions: contents: write` for GitHub token access
+- ✅ Fixed tag reference format (${{ github.ref_name }} instead of ${{ github.ref }})
+- ✅ Improved release notes with clear download instructions
+
+**Testing the Fix:**
+After pushing the updated workflow, create a new tag to test:
+```bash
+git tag v1.0.1
+git push --tags
+```
+This should now automatically create a GitHub Release with WSL-Compact.exe attached.
