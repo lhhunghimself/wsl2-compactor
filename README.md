@@ -49,6 +49,37 @@ Logs are also written to `%APPDATA%\WSLCompact\logs\latest.txt`.
 
 ## 2. Using the **Headless CLI**
 
+### Prerequisites
+* **Windows 10/11 host** – the CLI calls `wsl.exe`, the registry and `diskpart.exe`; it must run on Windows, **not inside the Linux distro**.
+* **WSL 2 enabled** with at least one distro installed.
+* **Administrator account** (required for DiskPart and terminating WSL).
+* **Python ≥ 3.10** installed on the Windows side.
+
+### Quick-start A – clone the repo (dev workflow)
+```powershell
+# Elevated PowerShell on Windows
+git clone https://github.com/<you>/wsl2-compactor.git
+cd wsl2-compactor
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install .            # installs only the wsl_compact package – no PySide6
+
+# Dry-run test (safe) – replace distro/user as needed
+python -m wsl_compact.cli --distro Ubuntu --user ubuntu --dry-run
+```
+
+### Quick-start B – use wheel from release ZIP (no git needed)
+```powershell
+# Download WSL-Compact-CLI.zip from GitHub Releases and unzip
+cd WSL-Compact-CLI
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install wsl_compact-*.whl
+python -m wsl_compact.cli --help
+```
+
+> **Running inside the distro?**  Not possible – the tool needs host-side APIs. Always run it in Windows.
+
 The core logic lives in `wsl_compact` and can be invoked without the GUI.
 
 ```powershell

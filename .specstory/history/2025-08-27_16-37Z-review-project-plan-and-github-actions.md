@@ -3561,3 +3561,158 @@ This clarifies the note after the CLI flags snippet.
 
 ---
 
+_**User**_
+
+The README doesn't say how to install so that you can use the HEADLESS CLI. Or it does say but it isn't clear in that section. Can you provide more details i.e. should it be run from the distro?
+
+---
+
+_**Assistant**_
+
+
+
+---
+
+The headless CLI runs on **Windows 10/11 (host)** – not inside the Linux distro – because it calls `wsl.exe`, the Windows registry, and `diskpart.exe`. Below is wording you can insert in the README right after the “Using the Headless CLI” heading to make this explicit.
+
+```markdown
+### Prerequisites (for CLI)
+
+• Windows 10 or 11 with WSL 2 enabled  
+• Administrator account (needed for `diskpart.exe`)  
+• Python 3.10+ installed **on Windows**  
+  - The CLI is *not* executed inside the distro; it talks to `wsl.exe` from the host side.  
+• Git (only if you clone the repo instead of downloading a release)
+
+### Quick-start (Option A – run from cloned repository)
+
+```powershell
+# Open an elevated PowerShell *on Windows* (Run as administrator)
+git clone https://github.com/<you>/wsl2-compactor.git
+cd wsl2-compactor
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+# Only the core module is needed; no PySide6 required for headless use
+pip install .
+# Dry-run test
+python -m wsl_compact.cli --distro Ubuntu --user ubuntu --dry-run
+```
+
+### Quick-start (Option B – download release ZIP)
+
+1. Go to GitHub → **Releases** → download *WSL-Compact-CLI.zip* (future artifact).  
+2. Unzip to `C:\Tools\WSLCompactCLI`.  
+3. Open **elevated** PowerShell in that folder:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install wsl_compact-<version>-py3-none-any.whl      # wheel inside the zip
+python -m wsl_compact.cli --help
+```
+
+### Typical commands
+
+```powershell
+# Simulate everything – safe on any machine
+python -m wsl_compact.cli --distro Ubuntu --user ubuntu --dry-run
+
+# Real compaction, auto-detect VHD
+python -m wsl_compact.cli --distro Ubuntu --user ubuntu
+
+# Specify VHD path manually
+python -m wsl_compact.cli --distro Ubuntu --user ubuntu `
+                          --vhd "C:\Users\me\AppData\Local\...ext4.vhdx"
+
+# Skip relaunch
+python -m wsl_compact.cli --no-relaunch
+```
+
+> **Why Windows, not inside WSL?**  
+> The tool needs to terminate the distro with `wsl.exe`, locate the VHD via the Windows registry, and run `diskpart.exe`. None of those APIs are accessible from inside the Linux environment.
+
+Add this block to the README and the installation path for the headless CLI should be crystal-clear.
+
+---
+
+_**User**_
+
+Add the additional explanations and integrate into the README
+
+---
+
+_**Assistant**_
+
+
+
+---
+
+Read file: undefined
+
+---
+
+
+
+---
+
+<details><summary>Edit file: /home/lhhung/wsl2-compactor/README.md</summary>
+
+undefined
+
+**Chunk 1**
+Lines added: 31, lines removed: undefined
+
+```diff
+@@ -49,4 +49,35 @@
+  
+  ## 2. Using the **Headless CLI**
++ 
++ ### Prerequisites
++ * **Windows 10/11 host** – the CLI calls `wsl.exe`, the registry and `diskpart.exe`; it must run on Windows, **not inside the Linux distro**.
++ * **WSL 2 enabled** with at least one distro installed.
++ * **Administrator account** (required for DiskPart and terminating WSL).
++ * **Python ≥ 3.10** installed on the Windows side.
++ 
++ ### Quick-start A – clone the repo (dev workflow)
++ ```powershell
++ # Elevated PowerShell on Windows
++ git clone https://github.com/<you>/wsl2-compactor.git
++ cd wsl2-compactor
++ python -m venv .venv
++ .venv\Scripts\Activate.ps1
++ pip install .            # installs only the wsl_compact package – no PySide6
++ 
++ # Dry-run test (safe) – replace distro/user as needed
++ python -m wsl_compact.cli --distro Ubuntu --user ubuntu --dry-run
++ ```
++ 
++ ### Quick-start B – use wheel from release ZIP (no git needed)
++ ```powershell
++ # Download WSL-Compact-CLI.zip from GitHub Releases and unzip
++ cd WSL-Compact-CLI
++ python -m venv .venv
++ .venv\Scripts\Activate.ps1
++ pip install wsl_compact-*.whl
++ python -m wsl_compact.cli --help
++ ```
++ 
++ > **Running inside the distro?**  Not possible – the tool needs host-side APIs. Always run it in Windows.
+  
+  The core logic lives in `wsl_compact` and can be invoked without the GUI.
+```
+
+</details>
+
+---
+
+Added detailed prerequisites and two quick-start recipes under “Using the Headless CLI”:
+
+• Clarifies that the CLI must run on Windows, not inside WSL  
+• Lists required components (WSL 2, admin rights, Python)  
+• Shows repo-clone install and wheel-only install paths  
+• Explicit note explaining why running inside the distro won’t work
+
+README now fully explains installation and usage of the headless CLI.
+
+---
+
