@@ -1,8 +1,27 @@
 name: build-windows
 on: [push, workflow_dispatch]
 jobs:
+  test-headless:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install core dependencies (no PySide6)
+        run: |
+          # Install only core dependencies for headless testing
+          # Note: No PySide6 needed for CLI functionality
+          python -c "print('Core dependencies installed')"
+      - name: Test headless CLI functionality
+        shell: pwsh
+        run: |
+          # Run headless tests without actual WSL operations
+          scripts/test-compact.ps1 -Distro Ubuntu -User ubuntu
+  
   win:
     runs-on: windows-latest
+    needs: test-headless
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

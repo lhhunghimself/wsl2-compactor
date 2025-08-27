@@ -587,6 +587,12 @@ No additional local tools are required beyond Python 3.10+ and PySide6 for devel
    - Now uses modern GitHub CLI (gh release create)
    - Added proper permissions: contents: write
    - Fixed tag reference (${{ github.ref }} → ${{ github.ref_name }})
+7. **IMPLEMENTED HEADLESS CLI & TESTING**: Created modular architecture
+   - Extracted core logic to wsl_compact/core.py (no GUI dependencies)
+   - Added CLI interface: python -m wsl_compact.cli with full argument support
+   - Created PowerShell test suite: scripts/test-compact.ps1
+   - Added test-headless CI job that validates core functionality
+   - Refactored app.py to use the new core module
    - ✅ Fixed PowerShell multiline issue by collapsing gh release command into a single line
 
 🛠️ **IN PROGRESS:**
@@ -626,3 +632,44 @@ git tag v1.0.1
 git push --tags
 ```
 This should now automatically create a GitHub Release with WSL-Compact.exe attached.
+
+8) Headless CLI & CI test  
+Goal: run core compaction logic without GUI to catch regressions and provide a power-user CLI.  
+
+Implementation roadmap  
+1. **Refactor core logic** – ✅ moved helper/worker code from `app.py` to `wsl_compact/core.py` (no Qt deps).  
+2. **Create CLI entry point** – ✅ `wsl_compact/cli.py` with `argparse` exposing: distro, user, vhd, --dry-run, --relaunch.  
+   * `python -m wsl_compact.cli --distro Ubuntu --user ubuntu --dry-run`  
+3. **PowerShell test script** – ✅ `scripts/test-compact.ps1` runs the CLI in `--dry-run` mode and asserts expected log lines.  
+4. **CI job** – ✅ added `test-headless` matrix job to `build.yml` (windows-latest) that executes the PS script.  
+5. **Optional self-contained exe** – 🔲 later, build a tiny `WSL-Compact-CLI.exe` via PyInstaller without Qt to distribute to admins.  
+
+Benefits  
+• Automated regression coverage for DiskPart/WSL steps.  
+• No Qt/PySide6 download in CI (only tiny core).  
+• Provides a scriptable alternative for power users and server admins.  
+
+Implementation details  
+✅ Created `wsl_compact/` module with:  
+   - `core.py`: All WSL/DiskPart logic, no GUI dependencies  
+   - `cli.py`: Command-line interface with full argument parsing  
+   - `__init__.py` & `__main__.py`: Module structure  
+✅ Refactored `app.py` to use `wsl_compact.core.compact_wsl_vhd()`  
+✅ Added `scripts/test-compact.ps1` with comprehensive test suite  
+✅ Updated `build.yml` with `test-headless` job that runs before main build  
+
+CLI usage examples:  
+```bash  
+# Dry run test  
+python -m wsl_compact.cli --distro Ubuntu --user ubuntu --dry-run  
+
+# Real compaction with custom VHD  
+python -m wsl_compact.cli --distro Ubuntu --user ubuntu --vhd "C:\path\to\ext4.vhdx"  
+
+# No relaunch after compaction  
+python -m wsl_compact.cli --distro Ubuntu --user ubuntu --no-relaunch  
+```  
+
+Timeline  
+✅ Week 1 – refactor + CLI + tests + CI integration  
+🔲 Week 2 – optional standalone CLI exe  
