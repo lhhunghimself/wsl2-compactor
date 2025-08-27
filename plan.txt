@@ -1,0 +1,567 @@
+WSL-Compact (PySide6) — Build & Test Plan
+
+Goal: ship a Windows .exe that:
+
+logs out any existing user in a WSL2 distro,
+
+verifies logout,
+
+compacts the VHDX via DiskPart,
+
+optionally relaunches the distro (checkbox in UI).
+
+We develop on Linux (Cursor), and build the .exe on GitHub Actions (Windows runner).
+
+0) Prerequisites
+
+Dev machine: Linux/macOS with Python ≥ 3.10 (for editing only)
+
+GitHub repository ready (you can create it empty)
+
+A Windows 11 test box with WSL2 to run the built .exe
+
+Note: Compaction and WSL APIs only work on Windows. On Linux/macOS you can launch the GUI, but the main actions are no-ops.
+
+1) Repository scaffold
+
+Create this structure:
+
+wsl-compact-gui/
+├─ app.py
+├─ requirements.txt
+├─ .gitignore
+├─ README.md
+└─ .github/
+   └─ workflows/
+      └─ build.yml
+
+1.1 Create requirements.txt
+PySide6
+
+1.2 Create .gitignore
+.venv/
+__pycache__/
+build/
+dist/
+*.spec
+*.pyc
+.DS_Store
+
+1.3 Create README.md (quick start)
+# WSL Compact (PySide6)
+
+Minimal GUI to:
+1) log out any existing user in a WSL2 distro,
+2) verify logout,
+3) compact the distro's `ext4.vhdx`,
+4) optionally relaunch the distro for that user.
+
+## Dev (Linux or Windows)
+```bash
+python -m venv .venv
+. .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python app.py          # GUI launches (core actions work only on Windows)
+
+Build .exe (GitHub Actions)
+
+Push to GitHub; open Actions; download WSL-Compact.exe artifact.
+
+Usage (on Windows)
+
+Double-click WSL-Compact.exe (UAC prompt).
+
+Distro defaults to Ubuntu, user defaults to ubuntu.
+
+Leave VHD blank to auto-detect; or browse to ext4.vhdx.
+
+Toggle “Relaunch distro after compaction”.
+
+Click Run.
+
+Notes
+
+Compaction uses DiskPart (universal; requires admin).
+
+VHD path auto-detected from the Lxss registry for chosen distro.
+
+“Logout” forcibly kills all processes for the specified user inside WSL (as root).
+
+
+### 1.4 Create `.github/workflows/build.yml`
+```yaml
+name: build-windows
+on: [push, workflow_dispatch]
+jobs:
+  win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: pip install pyinstaller
+      - run: pyinstaller --onefile --uac-admin --name WSL-Compact app.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WSL-Compact
+          path: dist/WSL-Compact.exe
+
+2) Main application (PySide6 GUI)
+
+Create app.py with the following content:
+
+import os, sys, json, ctypes, subprocess, tempfile, shutil
+from pathlib import Path
+
+from PySide6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QFormLayout, QLineEdit,
+    QPushButton, QFileDialog, QTextEdit, QCheckBox, QMessageBox
+)
+from PySide6.QtCore import Qt, QThread, Signal
+
+APP_DIR = Path(os.environ.get("APPDATA", r".")) / "WSLCompact"
+APP_DIR.mkdir(parents=True, exist_ok=True)
+CFG_PATH = APP_DIR / "config.json"
+
+# ---------- helpers ----------
+def is_windows():
+    return os.name == "nt"
+
+def is_admin():
+    if not is_windows():
+        return False
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin() != 0
+    except Exception:
+        return False
+
+def relaunch_elevated():
+    """Relaunch current script with admin rights (for local runs)."""
+    params = " ".join(f'"{a}"' for a in sys.argv)
+    ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, None, 1)
+    sys.exit(0)
+
+def run(cmd, check=True, capture=False):
+    return subprocess.run(cmd, check=check, text=True,
+                          capture_output=capture)
+
+def wsl_root(distro, bash_cmd, check=True):
+    """Run a bash command as root inside the distro."""
+    return run(["wsl","-d",distro,"-u","root","-e","bash","-lc",bash_cmd], check=check, capture=True)
+
+def get_default_distro():
+    cp = run(["wsl","-l","-v"], capture=True)
+    for line in cp.stdout.splitlines():
+        if line.strip().startswith("*"):
+            parts = line.strip().split()
+            # "* Ubuntu-22.04   Running ..."
+            return parts[1]
+    cp2 = run(["wsl","-l","-q"], capture=True)
+    names = [l.strip() for l in cp2.stdout.splitlines() if l.strip()]
+    if not names:
+        raise RuntimeError("No WSL distros found.")
+    return names[0]
+
+def get_vhd_for_distro(distro):
+    import winreg
+    base = r"Software\Microsoft\Windows\CurrentVersion\Lxss"
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, base) as k:
+        i = 0
+        while True:
+            try:
+                sub = winreg.EnumKey(k, i); i += 1
+            except OSError:
+                break
+            with winreg.OpenKey(k, sub) as sk:
+                try:
+                    name, _ = winreg.QueryValueEx(sk, "DistributionName")
+                    if name == distro:
+                        base_path, _ = winreg.QueryValueEx(sk, "BasePath")
+                        p = Path(base_path) / "ext4.vhdx"
+                        if p.exists():
+                            return p
+                except FileNotFoundError:
+                    continue
+    raise FileNotFoundError(f"VHD not found for distro {distro}")
+
+def user_active(distro, username):
+    """
+    Return True if any process exists for the user (best-effort).
+    """
+    # If user doesn't exist, treat as inactive.
+    cmd = f'if id -u {username} >/dev/null 2>&1; then pgrep -u {username} >/dev/null 2>&1; echo $?; else echo 1; fi'
+    cp = wsl_root(distro, cmd, check=False)
+    return cp.stdout.strip().endswith("0")
+
+def logout_user(distro, username):
+    """
+    Force logout by killing all processes of the user. Best-effort and safe to run even if no procs.
+    """
+    wsl_root(distro, f'if id -u {username} >/dev/null 2>&1; then pkill -KILL -u {username} || true; fi', check=False)
+
+def terminate_wsl(distro):
+    run(["wsl","--terminate",distro], check=False)
+    run(["wsl","--shutdown"], check=False)
+
+def run_diskpart_compact(vhd_path: Path):
+    script = f"""select vdisk file="{vhd_path}"
+attach vdisk readonly
+compact vdisk
+detach vdisk
+exit
+"""
+    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".txt") as tf:
+        tf.write(script)
+        p = tf.name
+    try:
+        cp = run(["diskpart.exe","/s",p], check=True, capture=True)
+        return cp.stdout
+    finally:
+        try: os.remove(p)
+        except OSError: pass
+
+def relaunch_distro(distro, username):
+    # Non-interactive background start so the distro is "up" for that user.
+    subprocess.Popen(["wsl","-d",distro,"-u",username])
+
+# ---------- worker ----------
+class Worker(QThread):
+    log = Signal(str)
+    done = Signal(str, bool)  # message, ok?
+
+    def __init__(self, distro, username, vhd_path, relaunch_after):
+        super().__init__()
+        self.distro = distro
+        self.username = username
+        self.vhd_path = Path(vhd_path)
+        self.relaunch_after = relaunch_after
+
+    def emit(self, msg):  # convenience
+        self.log.emit(msg)
+
+    def run(self):
+        try:
+            self.emit(f"Target distro: {self.distro}")
+            self.emit(f"Target user: {self.username}")
+            self.emit(f"VHDX: {self.vhd_path}")
+
+            if not self.vhd_path.exists():
+                self.done.emit(f"VHD file not found: {self.vhd_path}", False)
+                return
+
+            # 1) Detect activity
+            self.emit("Checking for active user processes…")
+            active = False
+            try:
+                active = user_active(self.distro, self.username)
+            except Exception as e:
+                self.emit(f"Warning: activity check failed ({e}); continuing.")
+
+            # 2) Log out (force)
+            if active:
+                self.emit("User appears active; logging out (killing all processes)…")
+            else:
+                self.emit("No active processes detected for user; proceeding to shutdown.")
+
+            try:
+                logout_user(self.distro, self.username)
+            except Exception as e:
+                self.emit(f"Warning: logout attempt failed ({e}); continuing.")
+
+            # Re-check
+            try:
+                still_active = user_active(self.distro, self.username)
+                self.emit("Logout verification: " + ("FAILED (still active)" if still_active else "OK"))
+            except Exception as e:
+                self.emit(f"Warning: could not re-verify logout ({e}).")
+
+            # 3) Clean shutdown
+            self.emit("Stopping WSL…")
+            terminate_wsl(self.distro)
+
+            # 4) Compact
+            self.emit("Compacting VHD (DiskPart)…")
+            out = run_diskpart_compact(self.vhd_path)
+            self.emit(out if out else "DiskPart finished.")
+
+            # 5) Optional relaunch
+            if self.relaunch_after:
+                self.emit("Relaunching distro…")
+                try:
+                    relaunch_distro(self.distro, self.username)
+                    self.emit("Relaunch requested.")
+                except Exception as e:
+                    self.emit(f"Warning: relaunch failed ({e})")
+
+            self.done.emit("Done.", True)
+        except Exception as e:
+            self.done.emit(f"Error: {e}", False)
+
+# ---------- UI ----------
+class MainWin(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("WSL Compact (PySide6)")
+
+        form = QFormLayout()
+        self.distro = QLineEdit("Ubuntu")
+        self.username = QLineEdit("ubuntu")
+        self.vhd = QLineEdit("")
+        self.relaunch = QCheckBox("Relaunch distro after compaction")
+        self.relaunch.setChecked(True)
+
+        browse = QPushButton("Browse…")
+        browse.clicked.connect(self.pick_vhd)
+
+        form.addRow("Distro:", self.distro)
+        form.addRow("Username:", self.username)
+        # VHD field + browse stacked
+        vhd_row = QWidget(); vbox = QVBoxLayout(vhd_row); vbox.setContentsMargins(0,0,0,0)
+        vbox.addWidget(self.vhd); vbox.addWidget(browse)
+        form.addRow("VHDX:", vhd_row)
+        form.addRow("", self.relaunch)
+
+        self.runbtn = QPushButton("Run")
+        self.runbtn.clicked.connect(self.run_clicked)
+        self.log = QTextEdit(); self.log.setReadOnly(True)
+
+        layout = QVBoxLayout(self)
+        layout.addLayout(form)
+        layout.addWidget(self.runbtn)
+        layout.addWidget(self.log)
+
+        # Load config
+        if CFG_PATH.exists():
+            try:
+                cfg = json.loads(CFG_PATH.read_text())
+                self.distro.setText(cfg.get("distro","Ubuntu"))
+                self.username.setText(cfg.get("username","ubuntu"))
+                self.vhd.setText(cfg.get("vhd",""))
+                self.relaunch.setChecked(bool(cfg.get("relaunch", True)))
+            except: pass
+
+        # Best-effort auto-detect VHD on first run
+        if not self.vhd.text() and is_windows():
+            try:
+                self.vhd.setText(str(get_vhd_for_distro(self.distro.text().strip() or "Ubuntu")))
+            except: pass
+
+    def pick_vhd(self):
+        p, _ = QFileDialog.getOpenFileName(self, "Select ext4.vhdx", str(Path.home()), "VHDX (*.vhdx)")
+        if p: self.vhd.setText(p)
+
+    def run_clicked(self):
+        # Save config
+        CFG_PATH.write_text(json.dumps({
+            "distro": self.distro.text().strip() or "Ubuntu",
+            "username": self.username.text().strip() or "ubuntu",
+            "vhd": self.vhd.text().strip(),
+            "relaunch": self.relaunch.isChecked()
+        }, indent=2))
+
+        if not is_windows():
+            QMessageBox.critical(self, "Error", "This tool must run on Windows.")
+            return
+
+        # If not admin (e.g., running from source), relaunch elevated
+        if not is_admin():
+            relaunch_elevated()
+
+        distro = self.distro.text().strip() or "Ubuntu"
+        username = self.username.text().strip() or "ubuntu"
+        vhd = self.vhd.text().strip()
+
+        if not vhd:
+            try:
+                vhd = str(get_vhd_for_distro(distro))
+                self.vhd.setText(vhd)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"VHD not found: {e}")
+                return
+
+        self.runbtn.setEnabled(False)
+        self.worker = Worker(distro, username, vhd, self.relaunch.isChecked())
+        self.worker.log.connect(lambda s: self.log.append(s))
+        self.worker.done.connect(self.finish)
+        self.worker.start()
+
+    def finish(self, msg, ok):
+        self.log.append(msg)
+        if not ok:
+            QMessageBox.critical(self, "Result", msg)
+        else:
+            QMessageBox.information(self, "Result", msg)
+        self.runbtn.setEnabled(True)
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    w = MainWin(); w.resize(600, 440); w.show()
+    sys.exit(app.exec())
+
+3) Commit & push
+git init
+git add .
+git commit -m "feat: initial PySide6 app + Windows CI"
+git branch -M main
+git remote add origin <YOUR_GITHUB_REPO_URL>
+git push -u origin main
+
+4) Build on GitHub Actions
+
+Open your repo → Actions tab → run the build-windows workflow.
+
+Download artifact WSL-Compact → WSL-Compact.exe.
+
+5) Test plan (Windows 11, WSL2)
+
+Do these on a Windows 11 machine with WSL2 installed and a distro like Ubuntu.
+
+Smoke test
+
+Double-click WSL-Compact.exe.
+
+UAC prompt appears → accept.
+
+GUI opens; default Distro=Ubuntu, Username=ubuntu.
+
+Leave VHD blank → click Run.
+
+Expect log lines:
+
+“Checking for active user processes…”
+
+“Stopping WSL…”
+
+“Compacting VHD (DiskPart)…” with DiskPart transcript
+
+“Relaunching distro…” (if checkbox is on)
+
+“Done.”
+
+Active user logout verification
+
+Open Windows Terminal → start wsl -d Ubuntu -u ubuntu and run a long command (e.g., sleep 600 &).
+
+In app, click Run.
+
+Expect: “User appears active; logging out…”, then “Logout verification: OK”.
+
+Confirm your WSL session was terminated.
+
+Manual VHD path
+
+In the app, paste a correct ext4.vhdx path or use Browse….
+
+Run and confirm compaction succeeds.
+
+Relaunch OFF
+
+Uncheck “Relaunch distro after compaction”.
+
+Run → ensure WSL is not relaunched afterwards.
+
+Error path (bad VHD)
+
+Enter a non-existent VHD path → Run → expect a clear error popup and log message.
+
+Acceptance criteria
+
+✅ Forces logout of the specified user when active.
+
+✅ Verifies logout (reports OK or warns).
+
+✅ Compacts the VHDX with DiskPart successfully.
+
+✅ Optional relaunch works when enabled; does not when disabled.
+
+✅ Clear errors for missing VHD / no WSL / non-Windows.
+
+6) Maintenance & releases
+
+Version bumps via tags: git tag v0.1.0 && git push --tags
+
+Optional: add a Release workflow to attach the .exe artifact to a GitHub Release.
+
+Future enhancement (optional): auto-prefer Optimize-VHD when available and fall back to DiskPart.
+
+7) Nice-to-have tasks (optional, after MVP)
+
+Add --dry-run CLI flag (skip DiskPart; print actions).
+
+Add “Detect VHD from distro” button.
+
+Persist window size/position in config.
+
+Add basic logging to %APPDATA%\WSLCompact\logs\latest.txt.
+
+Summary of current state vs. original plan
+
+✅ = implemented in repo  
+🛠️ = partly there / still needs work  
+🔲 = still to be done / optional
+
+0) Prerequisites  
+   ✅  Repo exists, Python 3.10+ available on dev machine.
+
+1) Repository scaffold  
+   ✅  Directory layout, `.gitignore`, `requirements.txt`, `README.md` are present.  
+   ✅  `.github/workflows/build.yml` exactly matches the plan.
+
+2) Main application (PySide6 GUI)  
+   ✅  `app.py` matches the reference implementation line-for-line.
+
+3) Commit & push  
+   ✅  Local commit exists and branch is ahead of `origin/master` by 1 commit.  
+   🛠️  Needs to be pushed to GitHub to trigger Actions.
+
+4) Build on GitHub Actions  
+   🔲  Workflow has not run yet (requires push).  
+   🛠️  May need small tweaks after first run (see “GitHub Actions details” below).
+
+5) Manual test plan on Windows 11  
+   🔲  To be executed after first artifact is produced.
+
+6) Maintenance & releases  
+   🔲  Tag-triggered release workflow not implemented.  
+   🔲  Version-bump instructions fine but automation could be added later.
+
+7) Nice-to-have tasks  
+   🔲  All optional features (dry-run, detect VHD button, etc.) still open.
+
+GitHub Actions details / required tools
+
+1. Runners & dependencies  
+   • The `windows-latest` runner already comes with a full Qt toolkit; PySide6 wheels pull their own Qt libs, so no extra chocolatey installs are needed.  
+   • `pip install -r requirements.txt` installs PySide6 at build time. Good.  
+   • `pyinstaller` is installed explicitly. Consider pinning a known-good version (e.g. `pyinstaller==6.5`) to avoid surprises.
+
+2. Artifact size limit  
+   PySide6/Qt DLLs make the exe large (75-110 MB). Default artifact limit is 2 GB, so you’re fine. No extra settings required.
+
+3. Code-signing (optional)  
+   If you want to avoid SmartScreen warnings you’ll eventually need to sign the exe. That requires:  
+   • A code-signing certificate (EV or OV).  
+   • Secrets in the repo (`CERT_PFX`, `CERT_PASS`).  
+   • Signtool step in the workflow.  
+   This is beyond MVP but worth tracking.
+
+4. Release workflow (optional)  
+   A second workflow (`release.yml`) can be added later to:  
+   • Trigger on tag push,  
+   • Download artifact from the build job,  
+   • Attach it to a GitHub Release.
+
+5. GitHub “mcp” installation?  
+   No. “mcp” is an internal helper used by the Cursor AI tooling; it is NOT required for your project or for GitHub Actions. All you need on your side is to push the branch—GitHub handles the rest.
+
+6. Windows Defender false positives  
+   Occasionally PyInstaller bundles are flagged on first run. If you hit this, add a comment in README with a VirusTotal link to reassure users.
+
+Updated next-step checklist (add to `plan.txt`)
+
+```
+
+No additional local tools are required beyond Python 3.10+ and PySide6 for development.  
+Proceed by pushing the current commit; monitor the first workflow run; iterate from there.
