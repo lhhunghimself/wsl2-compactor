@@ -218,8 +218,11 @@ def compact_wsl_vhd(distro: str, username: str, vhd_path: str, relaunch_after: b
         emit_log(f"Target user: {username}")
         emit_log(f"VHDX: {vhd_path_obj}")
         
-        if not dry_run and not vhd_path_obj.exists():
-            return CompactionResult(False, f"VHD file not found: {vhd_path_obj}", log_entries)
+        if not vhd_path_obj.exists():
+            if dry_run:
+                emit_log(f"Warning: VHD file not found (dry-run, continuing): {vhd_path_obj}")
+            else:
+                return CompactionResult(False, f"VHD file not found: {vhd_path_obj}", log_entries)
         
         # 1) Detect activity
         emit_log("Checking for active user processes…")

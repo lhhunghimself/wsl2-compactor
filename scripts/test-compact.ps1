@@ -50,10 +50,12 @@ catch {
 # Test 3: Dry run test (the main functionality test)
 Write-Host "`n[Test 3] Testing dry-run compaction..." -ForegroundColor Green
 try {
+    $dummyPath = "C:\\dummy\\ext4.vhdx"
     $dryRunArgs = @(
         "-m", "wsl_compact.cli",
         "--distro", $Distro,
         "--user", $User,
+        "--vhd", $dummyPath,
         "--dry-run"
     )
     
