@@ -513,18 +513,18 @@ Summary of current state vs. original plan
    ✅  `app.py` matches the reference implementation line-for-line.
 
 3) Commit & push  
-   ✅  Local commit exists and branch is ahead of `origin/master` by 1 commit.  
-   🛠️  Needs to be pushed to GitHub to trigger Actions.
+   ✅  Local commit exists and pushed to GitHub successfully.  
+   ✅  All code is now available on GitHub repository.
 
 4) Build on GitHub Actions  
-   🔲  Workflow has not run yet (requires push).  
-   🛠️  May need small tweaks after first run (see “GitHub Actions details” below).
+   🛠️  Code pushed, workflow should be running (check Actions tab).  
+   ✅  PyInstaller version pinned to 6.5.0 for stability.
 
 5) Manual test plan on Windows 11  
    🔲  To be executed after first artifact is produced.
 
 6) Maintenance & releases  
-   🔲  Tag-triggered release workflow not implemented.  
+   ✅  Tag-triggered release workflow implemented (.github/workflows/release.yml).  
    🔲  Version-bump instructions fine but automation could be added later.
 
 7) Nice-to-have tasks  
@@ -564,4 +564,28 @@ Updated next-step checklist (add to `plan.txt`)
 ```
 
 No additional local tools are required beyond Python 3.10+ and PySide6 for development.  
-Proceed by pushing the current commit; monitor the first workflow run; iterate from there.
+
+## Implementation Progress (Latest Updates)
+
+✅ **COMPLETED STEPS:**
+1. Pushed all code to GitHub repository (master branch)
+2. Created tag-triggered release workflow (.github/workflows/release.yml)
+3. Pinned PyInstaller version to 6.5.0 in build workflow for stability
+4. Updated plan.txt with current implementation status
+
+🛠️ **IN PROGRESS:**
+1. GitHub Actions build workflow should be running - check repository Actions tab
+2. First artifact will be available for download once workflow completes
+
+📋 **NEXT STEPS:**
+1. Monitor GitHub Actions workflow completion
+2. Download and test WSL-Compact.exe on Windows 11 machine
+3. Execute full test plan (smoke tests, edge cases)
+4. Optional: Implement nice-to-have features (dry-run, detect VHD button, etc.)
+
+**To create a release:**
+```bash
+git tag v1.0.0
+git push --tags
+```
+This will trigger the release workflow and create a GitHub Release with the attached executable.
