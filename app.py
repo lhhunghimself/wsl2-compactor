@@ -371,7 +371,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # Set global dry-run flag
-    global DRY_RUN
     DRY_RUN = args.dry_run
     
     if DRY_RUN:
