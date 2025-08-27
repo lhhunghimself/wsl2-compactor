@@ -587,6 +587,7 @@ No additional local tools are required beyond Python 3.10+ and PySide6 for devel
    - Now uses modern GitHub CLI (gh release create)
    - Added proper permissions: contents: write
    - Fixed tag reference (${{ github.ref }} → ${{ github.ref_name }})
+   - ✅ Fixed PowerShell multiline issue by collapsing gh release command into a single line
 
 🛠️ **IN PROGRESS:**
 1. GitHub Actions build workflow should be running - check repository Actions tab
