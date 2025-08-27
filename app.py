@@ -1,4 +1,4 @@
-import os, sys, json, ctypes, subprocess, tempfile, shutil
+import os, sys, json, ctypes, subprocess, tempfile, shutil, argparse
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -9,7 +9,29 @@ from PySide6.QtCore import Qt, QThread, Signal
 
 APP_DIR = Path(os.environ.get("APPDATA", r".")) / "WSLCompact"
 APP_DIR.mkdir(parents=True, exist_ok=True)
+LOG_DIR = APP_DIR / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 CFG_PATH = APP_DIR / "config.json"
+LOG_PATH = LOG_DIR / "latest.txt"
+
+# Global dry-run flag
+DRY_RUN = False
+
+def log_message(msg):
+    """Log message to both console and log file."""
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_entry = f"[{timestamp}] {msg}"
+    
+    # Print to console
+    print(log_entry)
+    
+    # Write to log file
+    try:
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(log_entry + "\n")
+    except Exception:
+        pass  # Fail silently if logging fails
 
 # ---------- helpers ----------
 def is_windows():
@@ -85,9 +107,15 @@ def logout_user(distro, username):
     """
     Force logout by killing all processes of the user. Best-effort and safe to run even if no procs.
     """
+    if DRY_RUN:
+        log_message(f"[DRY-RUN] Would kill all processes for user {username} in distro {distro}")
+        return
     wsl_root(distro, f'if id -u {username} >/dev/null 2>&1; then pkill -KILL -u {username} || true; fi', check=False)
 
 def terminate_wsl(distro):
+    if DRY_RUN:
+        log_message(f"[DRY-RUN] Would terminate WSL distro {distro} and shutdown WSL")
+        return
     run(["wsl","--terminate",distro], check=False)
     run(["wsl","--shutdown"], check=False)
 
@@ -98,6 +126,11 @@ compact vdisk
 detach vdisk
 exit
 """
+    if DRY_RUN:
+        log_message(f"[DRY-RUN] Would run DiskPart compact on {vhd_path}")
+        log_message(f"[DRY-RUN] DiskPart script would be:\n{script}")
+        return "[DRY-RUN] DiskPart compact simulation completed"
+    
     with tempfile.NamedTemporaryFile("w", delete=False, suffix=".txt") as tf:
         tf.write(script)
         p = tf.name
@@ -110,6 +143,9 @@ exit
 
 def relaunch_distro(distro, username):
     # Non-interactive background start so the distro is "up" for that user.
+    if DRY_RUN:
+        log_message(f"[DRY-RUN] Would relaunch WSL distro {distro} for user {username}")
+        return
     subprocess.Popen(["wsl","-d",distro,"-u",username])
 
 # ---------- worker ----------
@@ -126,6 +162,7 @@ class Worker(QThread):
 
     def emit(self, msg):  # convenience
         self.log.emit(msg)
+        log_message(msg)  # Also log to file
 
     def run(self):
         try:
@@ -200,12 +237,19 @@ class MainWin(QWidget):
 
         browse = QPushButton("Browse…")
         browse.clicked.connect(self.pick_vhd)
+        
+        detect = QPushButton("Detect VHD")
+        detect.clicked.connect(self.detect_vhd)
 
         form.addRow("Distro:", self.distro)
         form.addRow("Username:", self.username)
-        # VHD field + browse stacked
+        # VHD field + buttons stacked
         vhd_row = QWidget(); vbox = QVBoxLayout(vhd_row); vbox.setContentsMargins(0,0,0,0)
-        vbox.addWidget(self.vhd); vbox.addWidget(browse)
+        vbox.addWidget(self.vhd)
+        # Button row for Browse and Detect
+        btn_row = QWidget(); btn_layout = QVBoxLayout(btn_row); btn_layout.setContentsMargins(0,0,0,0)
+        btn_layout.addWidget(browse); btn_layout.addWidget(detect)
+        vbox.addWidget(btn_row)
         form.addRow("VHDX:", vhd_row)
         form.addRow("", self.relaunch)
 
@@ -226,6 +270,13 @@ class MainWin(QWidget):
                 self.username.setText(cfg.get("username","ubuntu"))
                 self.vhd.setText(cfg.get("vhd",""))
                 self.relaunch.setChecked(bool(cfg.get("relaunch", True)))
+                
+                # Restore window geometry if saved
+                if "window_geometry" in cfg:
+                    geom = cfg["window_geometry"]
+                    self.resize(geom.get("width", 600), geom.get("height", 440))
+                    if "x" in geom and "y" in geom:
+                        self.move(geom["x"], geom["y"])
             except: pass
 
         # Best-effort auto-detect VHD on first run
@@ -237,15 +288,46 @@ class MainWin(QWidget):
     def pick_vhd(self):
         p, _ = QFileDialog.getOpenFileName(self, "Select ext4.vhdx", str(Path.home()), "VHDX (*.vhdx)")
         if p: self.vhd.setText(p)
+    
+    def detect_vhd(self):
+        """Auto-detect VHD path for the current distro."""
+        distro = self.distro.text().strip() or "Ubuntu"
+        
+        if not is_windows():
+            QMessageBox.warning(self, "Warning", "VHD detection only works on Windows.")
+            return
+            
+        try:
+            vhd_path = get_vhd_for_distro(distro)
+            self.vhd.setText(str(vhd_path))
+            QMessageBox.information(self, "Success", f"VHD detected: {vhd_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not detect VHD for distro '{distro}': {e}")
 
-    def run_clicked(self):
-        # Save config
-        CFG_PATH.write_text(json.dumps({
+    def save_config(self):
+        """Save current configuration including window geometry."""
+        config = {
             "distro": self.distro.text().strip() or "Ubuntu",
             "username": self.username.text().strip() or "ubuntu",
             "vhd": self.vhd.text().strip(),
-            "relaunch": self.relaunch.isChecked()
-        }, indent=2))
+            "relaunch": self.relaunch.isChecked(),
+            "window_geometry": {
+                "x": self.x(),
+                "y": self.y(),
+                "width": self.width(),
+                "height": self.height()
+            }
+        }
+        CFG_PATH.write_text(json.dumps(config, indent=2))
+    
+    def closeEvent(self, event):
+        """Called when window is closed - save config."""
+        self.save_config()
+        event.accept()
+
+    def run_clicked(self):
+        # Save config before running
+        self.save_config()
 
         if not is_windows():
             QMessageBox.critical(self, "Error", "This tool must run on Windows.")
@@ -282,6 +364,26 @@ class MainWin(QWidget):
         self.runbtn.setEnabled(True)
 
 if __name__ == "__main__":
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="WSL Compact GUI - Compact WSL2 VHDX files")
+    parser.add_argument("--dry-run", action="store_true", 
+                       help="Show what actions would be taken without executing them")
+    args = parser.parse_args()
+    
+    # Set global dry-run flag
+    global DRY_RUN
+    DRY_RUN = args.dry_run
+    
+    if DRY_RUN:
+        log_message("[DRY-RUN MODE] No actual changes will be made")
+    else:
+        log_message("WSL Compact GUI started")
+    
     app = QApplication(sys.argv)
     w = MainWin(); w.resize(600, 440); w.show()
+    
+    # Add dry-run indicator to window title if enabled
+    if DRY_RUN:
+        w.setWindowTitle("WSL Compact (PySide6) - DRY RUN MODE")
+    
     sys.exit(app.exec())

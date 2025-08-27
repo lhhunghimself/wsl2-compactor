@@ -528,7 +528,10 @@ Summary of current state vs. original plan
    🔲  Version-bump instructions fine but automation could be added later.
 
 7) Nice-to-have tasks  
-   🔲  All optional features (dry-run, detect VHD button, etc.) still open.
+   ✅  --dry-run CLI flag implemented with simulation mode
+   ✅  "Detect VHD" button added to GUI
+   ✅  Window geometry persistence (size and position)
+   ✅  Basic logging to %APPDATA%\WSLCompact\logs\latest.txt
 
 GitHub Actions details / required tools
 
@@ -572,6 +575,11 @@ No additional local tools are required beyond Python 3.10+ and PySide6 for devel
 2. Created tag-triggered release workflow (.github/workflows/release.yml)
 3. Pinned PyInstaller version to 6.5.0 in build workflow for stability
 4. Updated plan.txt with current implementation status
+5. Implemented all major nice-to-have features:
+   - --dry-run CLI flag with simulation mode
+   - "Detect VHD" button in GUI
+   - Window geometry persistence
+   - Basic logging to %APPDATA%\WSLCompact\logs\latest.txt
 
 🛠️ **IN PROGRESS:**
 1. GitHub Actions build workflow should be running - check repository Actions tab
